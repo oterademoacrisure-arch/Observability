@@ -1,0 +1,5 @@
+{
+  "name": "Bedrock DB Observability",
+  "description": "A unified, AI-powered observability framework for heterogeneous database engines (SQL Server, Postgres, Cosmos DB, etc.) using Bedrock-style normalization and RCA.",
+  "requestFramePermissions": []
+}
