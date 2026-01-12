@@ -1,5 +1,55 @@
 import requests
 import json
+
+# Connection Details
+GRAFANA_URL = "https://your-grafana-link.com"
+USER = "your_id"
+PASS = "your_pass"
+
+# This payload mimics the "Query Inspector" from your image
+payload = {
+    "queries": [{
+        "refId": "A",
+        "datasource": {"uid": "your_ds_uid"}, # Find this in your Inspector
+        "rawSql": "SELECT start_time_ts, status FROM dbq.process_schedule WHERE start_time_ts > now() - interval '1 hour'",
+        "format": "table"
+    }],
+    "from": "now-1h", "to": "now"
+}
+
+def fetch_and_parse():
+    response = requests.post(f"{GRAFANA_URL}/api/ds/query", auth=(USER, PASS), json=payload)
+    
+    if response.status_code != 200:
+        print(f"Error: {response.status_code}")
+        return
+
+    data = response.json()
+    
+    # 1. Drill down to the data frame
+    frame = data['results']['A']['frames'][0]
+    
+    # 2. Extract column names from schema
+    columns = [field['name'] for field in frame['schema']['fields']]
+    
+    # 3. Extract the actual values
+    # In Grafana, values are stored as a list of lists: [[times...], [status1...], [status2...]]
+    values = frame['data']['values']
+    
+    # 4. Transpose the data so it's readable row-by-row
+    rows = list(zip(*values))
+    
+    print(f"{' | '.join(columns)}")
+    print("-" * 50)
+    for row in rows:
+        print(f"{row}")
+
+fetch_and_parse()
+====================
+part 2 inclding llm
+
+import requests
+import json
 from openai import AzureOpenAI
 
 # --- CONFIGURATION ---
