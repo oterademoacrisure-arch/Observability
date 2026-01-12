@@ -3,6 +3,89 @@ import json
 from openai import AzureOpenAI
 
 # --- CONFIGURATION ---
+GRAFANA_URL = "https://dbq-dev-grafana.p2.ocp.citizensbank.com"
+# Use a Service Account Token or your credentials
+USER = "your_userid"
+PASS = "your_password"
+
+client = AzureOpenAI(
+    azure_endpoint="https://your-resource.openai.azure.com/", 
+    api_key="your_azure_open_ai_key", 
+    api_version="2024-02-01"
+)
+
+# 1. Prepare the Query Payload (Based on your "Query Inspector" image)
+# Note: I am using the raw SQL seen in your screenshot
+sql_query = """
+SELECT 
+    ps.start_time_ts,
+    MAX(CASE WHEN ps.process_id = 11 THEN ps.status END) AS "Metrics Exporter Events",
+    MAX(CASE WHEN ps.process_id = 12 THEN ps.status END) AS "Metrics Exporter Allocations",
+    MAX(CASE WHEN ps.process_id = 13 THEN ps.status END) AS "Resource Collector"
+FROM dbq.process_schedule ps
+JOIN dbq.process p ON ps.process_id = p.process_id
+WHERE ps.start_time_ts BETWEEN 'now-30m' AND 'now'
+GROUP BY ps.start_time_ts
+ORDER BY ps.start_time_ts;
+"""
+
+payload = {
+    "queries": [
+        {
+            "refId": "A",
+            "datasource": {"type": "grafana-postgresql-datasource", "uid": "your_ds_uid"},
+            "rawSql": sql_query,
+            "format": "table"
+        }
+    ],
+    "from": "now-30m",
+    "to": "now"
+}
+
+# 2. Fetch Data
+print("📡 Fetching data from Grafana...")
+response = requests.post(
+    f"{GRAFANA_URL}/api/ds/query", 
+    auth=(USER, PASS), 
+    json=payload
+)
+
+# 3. Clean the data for the LLM
+# Instead of sending the whole JSON, we extract the frames
+data = response.json()
+frames = data.get('results', {}).get('A', {}).get('frames', [])
+
+# Convert the data into a simple string format the LLM can easily read
+data_summary = ""
+for frame in frames:
+    data_summary += str(frame.get('data', {}).get('values', []))
+
+# 4. Get LLM Response
+print("🤖 Analyzing with LLM...")
+prompt = f"""
+You are a Site Reliability Engineer. Look at this status data for our microservices:
+{data_summary}
+
+Tasks:
+1. Identify if any process (Metrics Exporter, Resource Collector) is currently 'FAILED' or 'DOWN'.
+2. Provide a summary of the system health over the last 30 minutes.
+"""
+
+analysis = client.chat.completions.create(
+    model="your-deployment-name",
+    messages=[{"role": "user", "content": prompt}]
+)
+
+print("\n--- HEALTH REPORT ---")
+print(analysis.choices[0].message.content)
+
+============================================
+
+import requests
+import json
+from openai import AzureOpenAI
+
+# --- CONFIGURATION ---
 GRAFANA_URL = "https://your-grafana-link.com"
 DASHBOARD_UID = "paste_uid_from_url_here" # e.g. 'c8f641f5'
 USER = "your_userid"
